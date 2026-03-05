@@ -1,56 +1,69 @@
 import { describe, expect, it } from "vitest";
-import express from "express";
-import request from "supertest";
 import { privateHostnameGuard } from "../middleware/private-hostname-guard.js";
-
-function createApp(opts: { enabled: boolean; allowedHostnames?: string[]; bindHost?: string }) {
-  const app = express();
-  app.use(
-    privateHostnameGuard({
-      enabled: opts.enabled,
-      allowedHostnames: opts.allowedHostnames ?? [],
-      bindHost: opts.bindHost ?? "0.0.0.0",
-    }),
-  );
-  app.get("/api/health", (_req, res) => {
-    res.status(200).json({ status: "ok" });
-  });
-  app.get("/dashboard", (_req, res) => {
-    res.status(200).send("ok");
-  });
-  return app;
-}
+import { invokeMiddleware } from "./helpers/http-mocks.js";
 
 describe("privateHostnameGuard", () => {
   it("allows requests when disabled", async () => {
-    const app = createApp({ enabled: false });
-    const res = await request(app).get("/api/health").set("Host", "dotta-macbook-pro:3100");
-    expect(res.status).toBe(200);
+    const result = await invokeMiddleware(
+      privateHostnameGuard({
+        enabled: false,
+        allowedHostnames: [],
+        bindHost: "0.0.0.0",
+      }),
+      { method: "GET", path: "/api/health", headers: { host: "dotta-macbook-pro:3100" } },
+    );
+    expect(result.nextCalled).toBe(true);
   });
 
   it("allows loopback hostnames", async () => {
-    const app = createApp({ enabled: true });
-    const res = await request(app).get("/api/health").set("Host", "localhost:3100");
-    expect(res.status).toBe(200);
+    const result = await invokeMiddleware(
+      privateHostnameGuard({
+        enabled: true,
+        allowedHostnames: [],
+        bindHost: "0.0.0.0",
+      }),
+      { method: "GET", path: "/api/health", headers: { host: "localhost:3100" } },
+    );
+    expect(result.nextCalled).toBe(true);
   });
 
   it("allows explicitly configured hostnames", async () => {
-    const app = createApp({ enabled: true, allowedHostnames: ["dotta-macbook-pro"] });
-    const res = await request(app).get("/api/health").set("Host", "dotta-macbook-pro:3100");
-    expect(res.status).toBe(200);
+    const result = await invokeMiddleware(
+      privateHostnameGuard({
+        enabled: true,
+        allowedHostnames: ["dotta-macbook-pro"],
+        bindHost: "0.0.0.0",
+      }),
+      { method: "GET", path: "/api/health", headers: { host: "dotta-macbook-pro:3100" } },
+    );
+    expect(result.nextCalled).toBe(true);
   });
 
   it("blocks unknown hostnames with remediation command", async () => {
-    const app = createApp({ enabled: true, allowedHostnames: ["some-other-host"] });
-    const res = await request(app).get("/api/health").set("Host", "dotta-macbook-pro:3100");
-    expect(res.status).toBe(403);
-    expect(res.body?.error).toContain("please run pnpm paperclipai allowed-hostname dotta-macbook-pro");
+    const result = await invokeMiddleware(
+      privateHostnameGuard({
+        enabled: true,
+        allowedHostnames: ["some-other-host"],
+        bindHost: "0.0.0.0",
+      }),
+      { method: "GET", path: "/api/health", headers: { host: "dotta-macbook-pro:3100" } },
+    );
+    expect(result.res.statusCode).toBe(403);
+    expect((result.res.body as { error: string }).error).toContain(
+      "please run pnpm paperclipai allowed-hostname dotta-macbook-pro",
+    );
   });
 
   it("blocks unknown hostnames on page routes with plain-text remediation command", async () => {
-    const app = createApp({ enabled: true, allowedHostnames: ["some-other-host"] });
-    const res = await request(app).get("/dashboard").set("Host", "dotta-macbook-pro:3100");
-    expect(res.status).toBe(403);
-    expect(res.text).toContain("please run pnpm paperclipai allowed-hostname dotta-macbook-pro");
+    const result = await invokeMiddleware(
+      privateHostnameGuard({
+        enabled: true,
+        allowedHostnames: ["some-other-host"],
+        bindHost: "0.0.0.0",
+      }),
+      { method: "GET", path: "/dashboard", headers: { host: "dotta-macbook-pro:3100", accept: "text/html" } },
+    );
+    expect(result.res.statusCode).toBe(403);
+    expect(result.res.text).toContain("please run pnpm paperclipai allowed-hostname dotta-macbook-pro");
   });
 });
