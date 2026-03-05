@@ -425,6 +425,9 @@ const app = await createApp(db as any, {
   bindHost: config.host,
   authReady,
   companyDeletionEnabled: config.companyDeletionEnabled,
+  heartbeatSchedulerEnabled: config.heartbeatSchedulerEnabled,
+  heartbeatSchedulerIntervalMs: config.heartbeatSchedulerIntervalMs,
+  supermemoryApiKey: config.supermemoryApiKey,
   betterAuthHandler,
   resolveSession,
 });

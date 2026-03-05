@@ -25,6 +25,7 @@ import { llmRoutes } from "./routes/llms.js";
 import { assetRoutes } from "./routes/assets.js";
 import { accessRoutes } from "./routes/access.js";
 import { memoryRoutes } from "./routes/memory.js";
+import { metricsRoutes } from "./routes/metrics.js";
 import type { BetterAuthSessionResult } from "./auth/better-auth.js";
 
 type UiMode = "none" | "static" | "vite-dev";
@@ -40,6 +41,9 @@ export async function createApp(
     bindHost: string;
     authReady: boolean;
     companyDeletionEnabled: boolean;
+    heartbeatSchedulerEnabled: boolean;
+    heartbeatSchedulerIntervalMs: number;
+    supermemoryApiKey: string | null;
     betterAuthHandler?: express.RequestHandler;
     resolveSession?: (req: ExpressRequest) => Promise<BetterAuthSessionResult | null>;
   },
@@ -99,6 +103,13 @@ export async function createApp(
       deploymentExposure: opts.deploymentExposure,
       authReady: opts.authReady,
       companyDeletionEnabled: opts.companyDeletionEnabled,
+    }),
+  );
+  api.use(
+    metricsRoutes(db, {
+      heartbeatSchedulerEnabled: opts.heartbeatSchedulerEnabled,
+      heartbeatSchedulerIntervalMs: opts.heartbeatSchedulerIntervalMs,
+      supermemoryApiKey: opts.supermemoryApiKey,
     }),
   );
   api.use("/companies", companyRoutes(db));
