@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, not } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import {
   agents,
@@ -541,6 +541,52 @@ export function agentService(db: Db) {
         return { agent: null, ambiguous: true } as const;
       }
       return { agent: null, ambiguous: false } as const;
+    },
+
+    emergencyStop: async (companyId: string) => {
+      const now = new Date();
+
+      // Pause all agents that aren't already terminated or paused
+      const pausedRows = await db
+        .update(agents)
+        .set({ status: "paused", updatedAt: now })
+        .where(
+          and(
+            eq(agents.companyId, companyId),
+            not(inArray(agents.status, ["terminated", "paused"])),
+          ),
+        )
+        .returning();
+
+      // Cancel all queued/running heartbeat runs for this company
+      const cancelledRunRows = await db
+        .update(heartbeatRuns)
+        .set({ status: "cancelled", finishedAt: now, updatedAt: now })
+        .where(
+          and(
+            eq(heartbeatRuns.companyId, companyId),
+            inArray(heartbeatRuns.status, ["queued", "running"]),
+          ),
+        )
+        .returning();
+
+      // Cancel all queued wakeup requests for this company
+      const cancelledWakeupRows = await db
+        .update(agentWakeupRequests)
+        .set({ status: "cancelled", finishedAt: now, updatedAt: now })
+        .where(
+          and(
+            eq(agentWakeupRequests.companyId, companyId),
+            eq(agentWakeupRequests.status, "queued"),
+          ),
+        )
+        .returning();
+
+      return {
+        pausedAgents: pausedRows.length,
+        cancelledRuns: cancelledRunRows.length,
+        cancelledWakeups: cancelledWakeupRows.length,
+      };
     },
   };
 }

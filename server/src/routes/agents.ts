@@ -1378,5 +1378,26 @@ export function agentRoutes(db: Db) {
     });
   });
 
+  router.post("/companies/:companyId/emergency-stop", async (req, res) => {
+    assertBoard(req);
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+
+    const result = await svc.emergencyStop(companyId);
+
+    const actor = getActorInfo(req);
+    await logActivity(db, {
+      companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      action: "company.emergency_stop",
+      entityType: "company",
+      entityId: companyId,
+      details: result,
+    });
+
+    res.json(result);
+  });
+
   return router;
 }
