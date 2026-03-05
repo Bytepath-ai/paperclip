@@ -34,10 +34,16 @@ interface MemoryAddOpts {
   metadata?: Record<string, unknown>;
 }
 
+interface MemoryListOpts {
+  scopes: MemoryScope[];
+  limit?: number;
+}
+
 export interface MemoryServiceInstance {
   isEnabled(): boolean;
   search(opts: MemorySearchOpts): Promise<MemorySearchResult>;
   add(opts: MemoryAddOpts): Promise<void>;
+  list(opts: MemoryListOpts): Promise<MemorySearchResult>;
   buildContainerTag(scope: MemoryScope): string;
 }
 
@@ -111,6 +117,38 @@ export function memoryService(config: MemoryConfig): MemoryServiceInstance {
         return { results: allResults.slice(0, opts.limit ?? 10) };
       } catch (err) {
         logger.warn({ err }, "supermemory search failed");
+        return { results: [] };
+      }
+    },
+
+    async list(opts: MemoryListOpts): Promise<MemorySearchResult> {
+      await ready;
+      if (!client) return { results: [] };
+      try {
+        const allResults: MemoryResult[] = [];
+        const limit = opts.limit ?? 50;
+        const searchPromises = opts.scopes.map(async (scope) => {
+          const tag = buildContainerTag(scope);
+          const resp = await client.search.documents({
+            q: "*",
+            containerTag: tag,
+            limit,
+            threshold: 0,
+          });
+          const results = resp?.results ?? [];
+          for (const doc of results) {
+            allResults.push({
+              content: doc.content ?? doc.memory ?? doc.chunk ?? "",
+              metadata: doc.metadata,
+              score: doc.similarity ?? doc.score ?? 0,
+              containerTag: tag,
+            });
+          }
+        });
+        await withTimeout(Promise.all(searchPromises), MEMORY_TIMEOUT_MS);
+        return { results: allResults.slice(0, limit) };
+      } catch (err) {
+        logger.warn({ err }, "supermemory list failed");
         return { results: [] };
       }
     },

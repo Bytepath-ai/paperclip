@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { memoryAddSchema, memorySearchSchema, isUuidLike } from "@paperclipai/shared";
 import { validate } from "../middleware/validate.js";
-import { assertCompanyAccess } from "./authz.js";
+import { assertBoard, assertCompanyAccess } from "./authz.js";
 import { memoryService } from "../services/memory.js";
 import { agentService } from "../services/agents.js";
 import type { Db } from "@paperclipai/db";
@@ -98,6 +98,65 @@ export function memoryRoutes(db: Db) {
     });
 
     res.json(results);
+  });
+
+  // GET /api/agents/:agentId/memory — list recent memories
+  router.get("/agents/:agentId/memory", async (req, res) => {
+    if (!svc.isEnabled()) {
+      res.status(503).json({ error: "Memory service not configured" });
+      return;
+    }
+
+    const agentId = req.params.agentId as string;
+    const agent = await agents.getById(agentId);
+    if (!agent) {
+      res.status(404).json({ error: "Agent not found" });
+      return;
+    }
+    assertBoard(req);
+    assertCompanyAccess(req, agent.companyId);
+
+    const scopeType = (req.query.scope as string) ?? "agent";
+    const limit = Math.min(Math.max(1, Number(req.query.limit) || 20), 50);
+
+    let scopes: Array<{ companyId: string; agentId?: string; projectId?: string }>;
+    if (scopeType === "company") {
+      scopes = [{ companyId: agent.companyId }];
+    } else if (scopeType === "project") {
+      const projectId = req.query.projectId as string | undefined;
+      if (!projectId || !isUuidLike(projectId)) {
+        res.status(400).json({ error: "projectId query parameter is required for scope=project" });
+        return;
+      }
+      scopes = [{ companyId: agent.companyId, projectId }];
+    } else {
+      scopes = [{ companyId: agent.companyId, agentId: agent.id }];
+    }
+
+    const results = await svc.list({ scopes, limit });
+    res.json(results);
+  });
+
+  // DELETE /api/agents/:agentId/memory — clear agent's memories
+  router.delete("/agents/:agentId/memory", async (req, res) => {
+    if (!svc.isEnabled()) {
+      res.status(503).json({ error: "Memory service not configured" });
+      return;
+    }
+
+    const agentId = req.params.agentId as string;
+    const agent = await agents.getById(agentId);
+    if (!agent) {
+      res.status(404).json({ error: "Agent not found" });
+      return;
+    }
+    assertBoard(req);
+    assertCompanyAccess(req, agent.companyId);
+
+    // Supermemory SDK does not currently expose a delete/remove method
+    res.status(501).json({
+      error: "Memory deletion is not supported by the current memory provider (supermemory). Memories must be managed directly through the Supermemory dashboard.",
+    });
   });
 
   return router;
