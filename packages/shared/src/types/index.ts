@@ -59,6 +59,8 @@ export type {
   MemoryAddRequest,
   MemorySearchRequest,
 } from "./memory.js";
+export type { CompanyWebhook, WebhookEvent } from "./webhook.js";
+export { WEBHOOK_EVENTS } from "./webhook.js";
 export type {
   CompanyPortabilityInclude,
   CompanyPortabilitySecretRequirement,

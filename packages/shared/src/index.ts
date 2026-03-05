@@ -122,11 +122,15 @@ export type {
   MemorySearchResponse,
   MemoryAddRequest,
   MemorySearchRequest,
+  CompanyWebhook,
+  WebhookEvent,
   EnvBinding,
   AgentEnvConfig,
   CompanySecret,
   SecretProviderDescriptor,
 } from "./types/index.js";
+
+export { WEBHOOK_EVENTS } from "./types/webhook.js";
 
 export {
   createCompanySchema,
@@ -235,6 +239,8 @@ export {
   type CompanyPortabilityExport,
   type CompanyPortabilityPreview,
   type CompanyPortabilityImport,
+  createWebhookSchema,
+  type CreateWebhook,
 } from "./validators/index.js";
 
 export { API_PREFIX, API } from "./api.js";
