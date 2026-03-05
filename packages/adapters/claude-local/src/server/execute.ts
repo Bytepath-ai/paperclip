@@ -196,6 +196,20 @@ async function buildClaudeRuntimeConfig(input: ClaudeExecutionInput): Promise<Cl
     env.PAPERCLIP_WORKSPACES_JSON = JSON.stringify(workspaceHints);
   }
 
+  const memory = context.paperclipMemory;
+  if (Array.isArray(memory) && memory.length > 0) {
+    // Cap at 8KB by dropping lowest-scored entries to keep valid JSON
+    let entries = [...memory];
+    let memoryJson = JSON.stringify(entries);
+    while (memoryJson.length > 8192 && entries.length > 1) {
+      entries.pop();
+      memoryJson = JSON.stringify(entries);
+    }
+    if (memoryJson.length <= 8192) {
+      env.PAPERCLIP_MEMORY_CONTEXT = memoryJson;
+    }
+  }
+
   for (const [key, value] of Object.entries(envConfig)) {
     if (typeof value === "string") env[key] = value;
   }

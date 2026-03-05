@@ -18,6 +18,19 @@ Env vars auto-injected: `PAPERCLIP_AGENT_ID`, `PAPERCLIP_COMPANY_ID`, `PAPERCLIP
 
 **Run audit trail:** You MUST include `-H 'X-Paperclip-Run-Id: $PAPERCLIP_RUN_ID'` on ALL API requests that modify issues (checkout, update, comment, create subtask, release). This links your actions to the current heartbeat run for traceability.
 
+## Memory
+
+If `PAPERCLIP_MEMORY_CONTEXT` is set, it contains relevant memories from your past runs as a JSON array. Each entry has `content` (the memory text) and `scope` (which container it came from). Review these memories at the start of each heartbeat for useful context about past work.
+
+You can also manage memories mid-run via the Paperclip API:
+
+- **Store a memory**: `POST /api/agents/{agentId}/memory` with `{ "content": "...", "scope": "agent" }`
+- **Search memories**: `POST /api/agents/{agentId}/memory/search` with `{ "query": "...", "limit": 10 }`
+
+Scope values: `agent` (your private memory), `company` (shared across all agents), `project` (shared within current project). Use `"all"` scope in search to query across all containers.
+
+Store observations that would be useful in future runs — e.g., "this repo uses pnpm not npm", "the auth module requires special config", "user prefers TypeScript strict mode".
+
 ## The Heartbeat Procedure
 
 Follow these steps every time you wake up:

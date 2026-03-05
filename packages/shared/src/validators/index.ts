@@ -106,6 +106,13 @@ export {
 } from "./secret.js";
 
 export {
+  memoryAddSchema,
+  memorySearchSchema,
+  type MemoryAdd,
+  type MemorySearch,
+} from "./memory.js";
+
+export {
   createCostEventSchema,
   updateBudgetSchema,
   type CreateCostEvent,

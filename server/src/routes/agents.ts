@@ -48,7 +48,9 @@ export function agentRoutes(db: Db) {
   const svc = agentService(db);
   const access = accessService(db);
   const approvalsSvc = approvalService(db);
-  const heartbeat = heartbeatService(db);
+  const heartbeat = heartbeatService(db, {
+    memoryApiKey: process.env.SUPERMEMORY_API_KEY?.trim() || null,
+  });
   const issueApprovalsSvc = issueApprovalService(db);
   const secretsSvc = secretService(db);
   const strictSecretsMode = process.env.PAPERCLIP_SECRETS_STRICT_MODE === "true";

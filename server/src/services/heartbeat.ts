@@ -21,6 +21,7 @@ import type { AdapterExecutionResult, AdapterInvocationMeta, AdapterSessionCodec
 import { createLocalAgentJwt } from "../agent-auth-jwt.js";
 import { parseObject, asBoolean, asNumber, appendWithCap, MAX_EXCERPT_BYTES } from "../adapters/utils.js";
 import { secretService } from "./secrets.js";
+import { memoryService, type MemoryConfig } from "./memory.js";
 import { resolveDefaultAgentWorkspaceDir } from "../home-paths.js";
 
 const MAX_LIVE_LOG_CHUNK_BYTES = 8 * 1024;
@@ -289,9 +290,11 @@ function resolveNextSessionState(input: {
   };
 }
 
-export function heartbeatService(db: Db) {
+export function heartbeatService(db: Db, opts?: { memoryApiKey?: string | null; memoryPreRunLimit?: number }) {
   const runLogStore = getRunLogStore();
   const secretsSvc = secretService(db);
+  const memorySvc = memoryService({ apiKey: opts?.memoryApiKey ?? null });
+  const memoryPreRunLimit = opts?.memoryPreRunLimit ?? 10;
 
   async function getAgent(agentId: string) {
     return db
@@ -958,6 +961,43 @@ export function heartbeatService(db: Db) {
     if (resolvedWorkspace.projectId && !readNonEmptyString(context.projectId)) {
       context.projectId = resolvedWorkspace.projectId;
     }
+
+    // --- Supermemory: pre-run memory injection ---
+    if (memorySvc.isEnabled()) {
+      const memoryQueryParts: string[] = [];
+      const issueTitle = readNonEmptyString(context.issueTitle);
+      const wakeReason = readNonEmptyString(context.wakeReason);
+      if (issueTitle) memoryQueryParts.push(issueTitle);
+      if (wakeReason) memoryQueryParts.push(wakeReason);
+      const memoryQuery = memoryQueryParts.length > 0 ? memoryQueryParts.join(" — ") : null;
+      if (memoryQuery) {
+        const projectId = readNonEmptyString(context.projectId);
+        const scopes: Array<{ companyId: string; agentId?: string; projectId?: string }> = [
+          { companyId: agent.companyId, agentId: agent.id },
+          { companyId: agent.companyId },
+        ];
+        if (projectId) {
+          scopes.push({ companyId: agent.companyId, projectId });
+        }
+        try {
+          const memoryResults = await memorySvc.search({
+            query: memoryQuery,
+            scopes,
+            limit: memoryPreRunLimit,
+          });
+          if (memoryResults.results.length > 0) {
+            context.paperclipMemory = memoryResults.results.map((r) => ({
+              content: r.content,
+              scope: r.containerTag,
+            }));
+            logger.info({ agentId: agent.id, runId, memoryCount: memoryResults.results.length }, "supermemory: injected pre-run memories");
+          }
+        } catch (err) {
+          logger.warn({ err, agentId: agent.id, runId }, "supermemory: pre-run memory fetch failed");
+        }
+      }
+    }
+
     const runtimeSessionFallback = taskKey ? null : runtime.sessionId;
     const previousSessionDisplayId = truncateDisplayId(
       taskSession?.sessionDisplayId ??
@@ -1219,6 +1259,42 @@ export function heartbeatService(db: Db) {
           }
         }
       }
+      // --- Supermemory: post-run memory storage (fire-and-forget) ---
+      if (memorySvc.isEnabled() && outcome === "succeeded" && finalizedRun) {
+        const summaryText =
+          adapterResult.summary ||
+          `Agent ${agent.name} completed run ${run.id}: ${outcome}`;
+        const projectId = readNonEmptyString(context.projectId);
+        const issueId = readNonEmptyString(context.issueId);
+        const metadata: Record<string, unknown> = {
+          runId: run.id,
+          agentId: agent.id,
+          outcome,
+          timestamp: new Date().toISOString(),
+        };
+        if (issueId) metadata.issueId = issueId;
+        if (projectId) metadata.projectId = projectId;
+        void (async () => {
+          try {
+            await memorySvc.add({
+              content: summaryText,
+              scope: { companyId: agent.companyId, agentId: agent.id },
+              metadata,
+            });
+            if (projectId) {
+              await memorySvc.add({
+                content: summaryText,
+                scope: { companyId: agent.companyId, projectId },
+                metadata,
+              });
+            }
+            logger.info({ agentId: agent.id, runId }, "supermemory: stored post-run memory");
+          } catch (err) {
+            logger.warn({ err, agentId: agent.id, runId }, "supermemory: post-run memory store failed");
+          }
+        })();
+      }
+
       await finalizeAgentStatus(agent.id, outcome);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown adapter failure";
