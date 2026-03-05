@@ -55,6 +55,8 @@ export interface Config {
   heartbeatSchedulerEnabled: boolean;
   heartbeatSchedulerIntervalMs: number;
   companyDeletionEnabled: boolean;
+  supermemoryApiKey: string | null;
+  supermemoryPreRunLimit: number;
 }
 
 export function loadConfig(): Config {
@@ -186,5 +188,7 @@ export function loadConfig(): Config {
     heartbeatSchedulerEnabled: process.env.HEARTBEAT_SCHEDULER_ENABLED !== "false",
     heartbeatSchedulerIntervalMs: Math.max(10000, Number(process.env.HEARTBEAT_SCHEDULER_INTERVAL_MS) || 30000),
     companyDeletionEnabled,
+    supermemoryApiKey: process.env.SUPERMEMORY_API_KEY?.trim() || null,
+    supermemoryPreRunLimit: Math.max(1, Math.min(50, Number(process.env.SUPERMEMORY_PRE_RUN_LIMIT) || 10)),
   };
 }

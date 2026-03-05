@@ -39,7 +39,9 @@ export function issueRoutes(db: Db, storage: StorageService) {
   const router = Router();
   const svc = issueService(db);
   const access = accessService(db);
-  const heartbeat = heartbeatService(db);
+  const heartbeat = heartbeatService(db, {
+    memoryApiKey: process.env.SUPERMEMORY_API_KEY?.trim() || null,
+  });
   const agentsSvc = agentService(db);
   const projectsSvc = projectService(db);
   const goalsSvc = goalService(db);

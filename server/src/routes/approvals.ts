@@ -29,7 +29,9 @@ function redactApprovalPayload<T extends { payload: Record<string, unknown> }>(a
 export function approvalRoutes(db: Db) {
   const router = Router();
   const svc = approvalService(db);
-  const heartbeat = heartbeatService(db);
+  const heartbeat = heartbeatService(db, {
+    memoryApiKey: process.env.SUPERMEMORY_API_KEY?.trim() || null,
+  });
   const issueApprovalsSvc = issueApprovalService(db);
   const secretsSvc = secretService(db);
   const strictSecretsMode = process.env.PAPERCLIP_SECRETS_STRICT_MODE === "true";

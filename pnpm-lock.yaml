@@ -203,6 +203,9 @@ importers:
       pino-pretty:
         specifier: ^13.1.3
         version: 13.1.3
+      supermemory:
+        specifier: ^4.15.0
+        version: 4.15.0
       ws:
         specifier: ^8.19.0
         version: 8.19.0
@@ -4685,6 +4688,9 @@ packages:
   superagent@10.3.0:
     resolution: {integrity: sha512-B+4Ik7ROgVKrQsXTV0Jwp2u+PXYLSlqtDAhYnkkD+zn3yg8s/zjA2MeGayPoY/KICrbitwneDHrjSotxKL+0XQ==}
     engines: {node: '>=14.18.0'}
+
+  supermemory@4.15.0:
+    resolution: {integrity: sha512-FNBBOEi1HMvbBecXC6gn84nGy7ZEdFW5kLv7VlWirHDPEM08omBBBHQ7H2cwBIGWUenBMDaao3kPKe9W6Ki+UQ==}
 
   supertest@7.2.2:
     resolution: {integrity: sha512-oK8WG9diS3DlhdUkcFn4tkNIiIbBx9lI2ClF8K+b2/m8Eyv47LSawxUzZQSNKUrVb2KsqeTDCcjAAVPYaSLVTA==}
@@ -10402,6 +10408,8 @@ snapshots:
       qs: 6.15.0
     transitivePeerDependencies:
       - supports-color
+
+  supermemory@4.15.0: {}
 
   supertest@7.2.2:
     dependencies:

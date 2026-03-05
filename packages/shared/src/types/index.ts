@@ -53,6 +53,13 @@ export type {
   InstanceUserRoleGrant,
 } from "./access.js";
 export type {
+  MemoryEntry,
+  MemoryContext,
+  MemorySearchResponse,
+  MemoryAddRequest,
+  MemorySearchRequest,
+} from "./memory.js";
+export type {
   CompanyPortabilityInclude,
   CompanyPortabilitySecretRequirement,
   CompanyPortabilityCompanyManifestEntry,
