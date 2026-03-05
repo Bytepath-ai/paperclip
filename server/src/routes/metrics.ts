@@ -63,23 +63,19 @@ export function metricsRoutes(db: Db, config: MetricsConfig) {
     assertBoard(req);
     try {
       const [agentCounts, heartbeatCounts, [wakeupRow], [costRow]] = await Promise.all([
-        // Agent counts by status
         db
           .select({ status: agents.status, count: sql<number>`count(*)::int` })
           .from(agents)
           .groupBy(agents.status),
-        // Heartbeat run counts by status (only active: queued, running)
         db
           .select({ status: heartbeatRuns.status, count: sql<number>`count(*)::int` })
           .from(heartbeatRuns)
           .where(sql`${heartbeatRuns.status} IN ('queued', 'running')`)
           .groupBy(heartbeatRuns.status),
-        // Pending wakeup requests
         db
           .select({ count: sql<number>`count(*)::int` })
           .from(agentWakeupRequests)
           .where(sql`${agentWakeupRequests.status} = 'queued'`),
-        // Monthly cost — sum cost_cents for current month
         db
           .select({ total: sql<number>`coalesce(sum(${costEvents.costCents}), 0)::int` })
           .from(costEvents)
