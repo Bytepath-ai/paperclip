@@ -120,6 +120,11 @@ export {
 } from "./cost.js";
 
 export {
+  createWebhookSchema,
+  type CreateWebhook,
+} from "./webhook.js";
+
+export {
   createAssetImageMetadataSchema,
   type CreateAssetImageMetadata,
 } from "./asset.js";

@@ -26,6 +26,7 @@ import { assetRoutes } from "./routes/assets.js";
 import { accessRoutes } from "./routes/access.js";
 import { memoryRoutes } from "./routes/memory.js";
 import { metricsRoutes } from "./routes/metrics.js";
+import { webhookRoutes } from "./routes/webhooks.js";
 import type { BetterAuthSessionResult } from "./auth/better-auth.js";
 
 type UiMode = "none" | "static" | "vite-dev";
@@ -124,6 +125,7 @@ export async function createApp(
   api.use(activityRoutes(db));
   api.use(dashboardRoutes(db));
   api.use(memoryRoutes(db));
+  api.use(webhookRoutes(db));
   api.use(sidebarBadgeRoutes(db));
   api.use(
     accessRoutes(db, {

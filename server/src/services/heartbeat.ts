@@ -23,6 +23,7 @@ import { createLocalAgentJwt } from "../agent-auth-jwt.js";
 import { parseObject, asBoolean, asNumber, appendWithCap, MAX_EXCERPT_BYTES } from "../adapters/utils.js";
 import { secretService } from "./secrets.js";
 import { memoryService, type MemoryConfig } from "./memory.js";
+import { webhookService as webhookServiceFactory } from "./webhooks.js";
 import { resolveDefaultAgentWorkspaceDir } from "../home-paths.js";
 
 const MAX_LIVE_LOG_CHUNK_BYTES = 8 * 1024;
@@ -295,6 +296,7 @@ export function heartbeatService(db: Db, opts?: { memoryApiKey?: string | null; 
   const runLogStore = getRunLogStore();
   const secretsSvc = secretService(db);
   const memorySvc = memoryService({ apiKey: opts?.memoryApiKey ?? null });
+  const webhookSvc = webhookServiceFactory(db);
   const memoryPreRunLimit = opts?.memoryPreRunLimit ?? 10;
 
   async function getAgent(agentId: string) {
@@ -1328,6 +1330,14 @@ export function heartbeatService(db: Db, opts?: { memoryApiKey?: string | null; 
       }
 
       await finalizeAgentStatus(agent.id, outcome);
+
+      if (outcome === "failed") {
+        void webhookSvc.dispatch(agent.companyId, "heartbeat.failed", {
+          agentId: agent.id,
+          runId: run.id,
+          error: adapterResult.errorMessage ?? "run_failed",
+        });
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown adapter failure";
       logger.error({ err, runId }, "heartbeat execution failed");
@@ -1389,6 +1399,12 @@ export function heartbeatService(db: Db, opts?: { memoryApiKey?: string | null; 
       }
 
       await finalizeAgentStatus(agent.id, "failed");
+
+      void webhookSvc.dispatch(agent.companyId, "heartbeat.failed", {
+        agentId: agent.id,
+        runId: run.id,
+        error: message,
+      });
     } finally {
       await startNextQueuedRunForAgent(agent.id);
     }
