@@ -1259,7 +1259,7 @@ export function heartbeatService(db: Db, opts?: { memoryApiKey?: string | null; 
           }
         }
       }
-      // --- Supermemory: post-run memory storage ---
+      // --- Supermemory: post-run memory storage (fire-and-forget) ---
       if (memorySvc.isEnabled() && outcome === "succeeded" && finalizedRun) {
         const summaryText =
           adapterResult.summary ||
@@ -1274,23 +1274,25 @@ export function heartbeatService(db: Db, opts?: { memoryApiKey?: string | null; 
         };
         if (issueId) metadata.issueId = issueId;
         if (projectId) metadata.projectId = projectId;
-        try {
-          await memorySvc.add({
-            content: summaryText,
-            scope: { companyId: agent.companyId, agentId: agent.id },
-            metadata,
-          });
-          if (projectId) {
+        void (async () => {
+          try {
             await memorySvc.add({
               content: summaryText,
-              scope: { companyId: agent.companyId, projectId },
+              scope: { companyId: agent.companyId, agentId: agent.id },
               metadata,
             });
+            if (projectId) {
+              await memorySvc.add({
+                content: summaryText,
+                scope: { companyId: agent.companyId, projectId },
+                metadata,
+              });
+            }
+            logger.info({ agentId: agent.id, runId }, "supermemory: stored post-run memory");
+          } catch (err) {
+            logger.warn({ err, agentId: agent.id, runId }, "supermemory: post-run memory store failed");
           }
-          logger.info({ agentId: agent.id, runId }, "supermemory: stored post-run memory");
-        } catch (err) {
-          logger.warn({ err, agentId: agent.id, runId }, "supermemory: post-run memory store failed");
-        }
+        })();
       }
 
       await finalizeAgentStatus(agent.id, outcome);

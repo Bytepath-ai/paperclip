@@ -41,13 +41,29 @@ export interface MemoryServiceInstance {
   buildContainerTag(scope: MemoryScope): string;
 }
 
+const MEMORY_TIMEOUT_MS = 5000;
+
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error("supermemory timeout")), ms),
+    ),
+  ]);
+}
+
+// Singleton instance — created once, shared across all consumers
+let singleton: MemoryServiceInstance | null = null;
+
 export function memoryService(config: MemoryConfig): MemoryServiceInstance {
+  if (singleton) return singleton;
+
   const enabled = !!config.apiKey;
   let client: any = null;
+  let ready: Promise<void> = Promise.resolve();
 
   if (enabled) {
-    // Lazy-import the supermemory SDK to avoid errors when not installed
-    import("supermemory")
+    ready = import("supermemory")
       .then((mod) => {
         const Supermemory = mod.default ?? mod;
         client = new Supermemory({ apiKey: config.apiKey! });
@@ -64,14 +80,15 @@ export function memoryService(config: MemoryConfig): MemoryServiceInstance {
     return `company_${scope.companyId}`;
   }
 
-  return {
-    isEnabled: () => enabled && client !== null,
+  singleton = {
+    isEnabled: () => enabled,
 
     async search(opts: MemorySearchOpts): Promise<MemorySearchResult> {
+      await ready;
       if (!client) return { results: [] };
       try {
         const allResults: MemoryResult[] = [];
-        for (const scope of opts.scopes) {
+        const searchPromises = opts.scopes.map(async (scope) => {
           const tag = buildContainerTag(scope);
           const resp = await client.search.documents({
             q: opts.query,
@@ -88,7 +105,8 @@ export function memoryService(config: MemoryConfig): MemoryServiceInstance {
               containerTag: tag,
             });
           }
-        }
+        });
+        await withTimeout(Promise.all(searchPromises), MEMORY_TIMEOUT_MS);
         allResults.sort((a, b) => b.score - a.score);
         return { results: allResults.slice(0, opts.limit ?? 10) };
       } catch (err) {
@@ -98,14 +116,18 @@ export function memoryService(config: MemoryConfig): MemoryServiceInstance {
     },
 
     async add(opts: MemoryAddOpts): Promise<void> {
+      await ready;
       if (!client) return;
       try {
         const tag = buildContainerTag(opts.scope);
-        await client.add({
-          content: opts.content,
-          containerTag: tag,
-          metadata: opts.metadata,
-        });
+        await withTimeout(
+          client.add({
+            content: opts.content,
+            containerTag: tag,
+            metadata: opts.metadata,
+          }),
+          MEMORY_TIMEOUT_MS,
+        );
       } catch (err) {
         logger.warn({ err }, "supermemory add failed");
       }
@@ -113,4 +135,6 @@ export function memoryService(config: MemoryConfig): MemoryServiceInstance {
 
     buildContainerTag,
   };
+
+  return singleton;
 }

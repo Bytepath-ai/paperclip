@@ -1,15 +1,20 @@
 import { Router } from "express";
-import { memoryAddSchema, memorySearchSchema } from "@paperclipai/shared";
+import { memoryAddSchema, memorySearchSchema, isUuidLike } from "@paperclipai/shared";
 import { validate } from "../middleware/validate.js";
 import { assertCompanyAccess } from "./authz.js";
 import { memoryService } from "../services/memory.js";
 import { agentService } from "../services/agents.js";
 import type { Db } from "@paperclipai/db";
 
+function extractProjectId(metadata: unknown): string | null {
+  if (!metadata || typeof metadata !== "object") return null;
+  const raw = (metadata as Record<string, unknown>).projectId;
+  return typeof raw === "string" && isUuidLike(raw) ? raw : null;
+}
+
 export function memoryRoutes(db: Db) {
   const router = Router();
-  const apiKey = process.env.SUPERMEMORY_API_KEY?.trim() || null;
-  const svc = memoryService({ apiKey });
+  const svc = memoryService({ apiKey: process.env.SUPERMEMORY_API_KEY?.trim() || null });
   const agents = agentService(db);
 
   // POST /api/agents/:agentId/memory — store a memory
@@ -27,12 +32,8 @@ export function memoryRoutes(db: Db) {
     }
     assertCompanyAccess(req, agent.companyId);
 
-    // Resolve scope
     const scopeType = req.body.scope ?? "agent";
-    const projectId =
-      scopeType === "project"
-        ? (req.body.metadata?.projectId as string) ?? null
-        : null;
+    const projectId = scopeType === "project" ? extractProjectId(req.body.metadata) : null;
 
     const scope =
       scopeType === "company"
@@ -70,17 +71,25 @@ export function memoryRoutes(db: Db) {
     assertCompanyAccess(req, agent.companyId);
 
     const scopeType = req.body.scope ?? "all";
-    const scopes =
-      scopeType === "agent"
-        ? [{ companyId: agent.companyId, agentId: agent.id }]
-        : scopeType === "company"
-          ? [{ companyId: agent.companyId }]
-          : scopeType === "project"
-            ? [{ companyId: agent.companyId, projectId: (req.body.metadata?.projectId as string) ?? "" }]
-            : [
-                { companyId: agent.companyId, agentId: agent.id },
-                { companyId: agent.companyId },
-              ];
+    const projectId = extractProjectId(req.body.metadata);
+
+    let scopes: Array<{ companyId: string; agentId?: string; projectId?: string }>;
+    if (scopeType === "agent") {
+      scopes = [{ companyId: agent.companyId, agentId: agent.id }];
+    } else if (scopeType === "company") {
+      scopes = [{ companyId: agent.companyId }];
+    } else if (scopeType === "project" && projectId) {
+      scopes = [{ companyId: agent.companyId, projectId }];
+    } else {
+      // "all" — search agent + company + project (if available)
+      scopes = [
+        { companyId: agent.companyId, agentId: agent.id },
+        { companyId: agent.companyId },
+      ];
+      if (projectId) {
+        scopes.push({ companyId: agent.companyId, projectId });
+      }
+    }
 
     const results = await svc.search({
       query: req.body.query,
