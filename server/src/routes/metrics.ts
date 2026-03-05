@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import { agents, heartbeatRuns, agentWakeupRequests, costEvents } from "@paperclipai/db";
 import { memoryService } from "../services/memory.js";
+import { assertBoard } from "./authz.js";
 
 interface MetricsConfig {
   heartbeatSchedulerEnabled: boolean;
@@ -14,7 +15,8 @@ export function metricsRoutes(db: Db, config: MetricsConfig) {
   const router = Router();
 
   // GET /api/health/detailed — subsystem health check
-  router.get("/health/detailed", async (_req, res) => {
+  router.get("/health/detailed", async (req, res) => {
+    assertBoard(req);
     const startTime = process.uptime();
 
     // Check database
@@ -57,43 +59,44 @@ export function metricsRoutes(db: Db, config: MetricsConfig) {
   });
 
   // GET /api/metrics — Prometheus-format metrics
-  router.get("/metrics", async (_req, res) => {
+  router.get("/metrics", async (req, res) => {
+    assertBoard(req);
     try {
-      // Agent counts by status
-      const agentCounts = await db
-        .select({ status: agents.status, count: sql<number>`count(*)::int` })
-        .from(agents)
-        .groupBy(agents.status);
+      const [agentCounts, heartbeatCounts, [wakeupRow], [costRow]] = await Promise.all([
+        // Agent counts by status
+        db
+          .select({ status: agents.status, count: sql<number>`count(*)::int` })
+          .from(agents)
+          .groupBy(agents.status),
+        // Heartbeat run counts by status (only active: queued, running)
+        db
+          .select({ status: heartbeatRuns.status, count: sql<number>`count(*)::int` })
+          .from(heartbeatRuns)
+          .where(sql`${heartbeatRuns.status} IN ('queued', 'running')`)
+          .groupBy(heartbeatRuns.status),
+        // Pending wakeup requests
+        db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(agentWakeupRequests)
+          .where(sql`${agentWakeupRequests.status} = 'queued'`),
+        // Monthly cost — sum cost_cents for current month
+        db
+          .select({ total: sql<number>`coalesce(sum(${costEvents.costCents}), 0)::int` })
+          .from(costEvents)
+          .where(sql`${costEvents.occurredAt} >= date_trunc('month', now())`),
+      ]);
 
       const agentMap: Record<string, number> = { idle: 0, running: 0, paused: 0, error: 0 };
       for (const row of agentCounts) {
         agentMap[row.status] = row.count;
       }
 
-      // Heartbeat run counts by status (only active: queued, running)
-      const heartbeatCounts = await db
-        .select({ status: heartbeatRuns.status, count: sql<number>`count(*)::int` })
-        .from(heartbeatRuns)
-        .where(sql`${heartbeatRuns.status} IN ('queued', 'running')`)
-        .groupBy(heartbeatRuns.status);
-
       const heartbeatMap: Record<string, number> = { queued: 0, running: 0 };
       for (const row of heartbeatCounts) {
         heartbeatMap[row.status] = row.count;
       }
 
-      // Pending wakeup requests
-      const [wakeupRow] = await db
-        .select({ count: sql<number>`count(*)::int` })
-        .from(agentWakeupRequests)
-        .where(sql`${agentWakeupRequests.status} = 'queued'`);
       const pendingWakeups = wakeupRow?.count ?? 0;
-
-      // Monthly cost — sum cost_cents for current month
-      const [costRow] = await db
-        .select({ total: sql<number>`coalesce(sum(${costEvents.costCents}), 0)::int` })
-        .from(costEvents)
-        .where(sql`${costEvents.occurredAt} >= date_trunc('month', now())`);
       const monthlyCostCents = costRow?.total ?? 0;
 
       const lines = [

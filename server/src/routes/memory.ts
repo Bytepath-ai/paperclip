@@ -113,6 +113,7 @@ export function memoryRoutes(db: Db) {
       res.status(404).json({ error: "Agent not found" });
       return;
     }
+    assertBoard(req);
     assertCompanyAccess(req, agent.companyId);
 
     const scopeType = (req.query.scope as string) ?? "agent";
@@ -122,8 +123,12 @@ export function memoryRoutes(db: Db) {
     if (scopeType === "company") {
       scopes = [{ companyId: agent.companyId }];
     } else if (scopeType === "project") {
-      // For project scope without a project ID, fall back to agent scope
-      scopes = [{ companyId: agent.companyId, agentId: agent.id }];
+      const projectId = req.query.projectId as string | undefined;
+      if (!projectId || !isUuidLike(projectId)) {
+        res.status(400).json({ error: "projectId query parameter is required for scope=project" });
+        return;
+      }
+      scopes = [{ companyId: agent.companyId, projectId }];
     } else {
       scopes = [{ companyId: agent.companyId, agentId: agent.id }];
     }
