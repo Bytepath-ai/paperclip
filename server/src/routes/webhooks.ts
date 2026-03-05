@@ -1,8 +1,9 @@
 import { Router } from "express";
 import type { Db } from "@paperclipai/db";
-import { createWebhookSchema } from "@paperclipai/shared";
+import { createWebhookSchema, isUuidLike } from "@paperclipai/shared";
 import { validate } from "../middleware/validate.js";
 import { assertBoard, assertCompanyAccess } from "./authz.js";
+import { badRequest } from "../errors.js";
 import { logActivity, webhookService } from "../services/index.js";
 
 export function webhookRoutes(db: Db) {
@@ -50,6 +51,7 @@ export function webhookRoutes(db: Db) {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
     const webhookId = req.params.webhookId as string;
+    if (!isUuidLike(webhookId)) throw badRequest("Invalid webhook ID");
 
     const removed = await svc.remove(companyId, webhookId);
     if (!removed) {

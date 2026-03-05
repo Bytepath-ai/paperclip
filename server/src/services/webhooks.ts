@@ -1,11 +1,35 @@
 import crypto from "node:crypto";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import { companyWebhooks } from "@paperclipai/db";
 import type { WebhookEvent } from "@paperclipai/shared";
 import { logger } from "../middleware/logger.js";
+import { unprocessable } from "../errors.js";
 
 const DELIVERY_TIMEOUT_MS = 5_000;
+const MAX_WEBHOOKS_PER_COMPANY = 20;
+
+const PRIVATE_HOSTNAME_PATTERNS = [
+  /^localhost$/i,
+  /^127\.\d+\.\d+\.\d+$/,
+  /^10\.\d+\.\d+\.\d+$/,
+  /^172\.(1[6-9]|2\d|3[01])\.\d+\.\d+$/,
+  /^192\.168\.\d+\.\d+$/,
+  /^169\.254\.\d+\.\d+$/,
+  /^0\.0\.0\.0$/,
+  /^\[::1\]$/,
+];
+
+export function isPrivateUrl(raw: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return true; // treat unparseable URLs as private/blocked
+  }
+  if (url.protocol !== "https:") return true;
+  return PRIVATE_HOSTNAME_PATTERNS.some((p) => p.test(url.hostname));
+}
 
 function sign(secret: string, body: string): string {
   return crypto.createHmac("sha256", secret).update(body).digest("hex");
@@ -34,6 +58,14 @@ export function webhookService(db: Db) {
     companyId: string,
     input: { url: string; events: string[]; description?: string },
   ) {
+    const [{ count }] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(companyWebhooks)
+      .where(eq(companyWebhooks.companyId, companyId));
+    if (count >= MAX_WEBHOOKS_PER_COMPANY) {
+      throw unprocessable(`Company webhook limit reached (max ${MAX_WEBHOOKS_PER_COMPANY})`);
+    }
+
     const secret = crypto.randomBytes(32).toString("hex");
     const rows = await db
       .insert(companyWebhooks)
@@ -83,6 +115,11 @@ export function webhookService(db: Db) {
     });
 
     for (const hook of matching) {
+      if (isPrivateUrl(hook.url)) {
+        logger.warn({ webhookId: hook.id, url: hook.url }, "skipping webhook with private/non-HTTPS URL");
+        continue;
+      }
+
       const body = JSON.stringify({ event, payload, timestamp: new Date().toISOString() });
       const signature = sign(hook.secret, body);
 
@@ -111,6 +148,9 @@ export function webhookService(db: Db) {
             .set({ lastDeliveryAt: new Date(), lastDeliveryStatus: status, updatedAt: new Date() })
             .where(eq(companyWebhooks.id, hook.id));
           logger.warn({ webhookId: hook.id, event, err: (err as Error).message }, "webhook delivery failed");
+        })
+        .catch((innerErr) => {
+          logger.error({ innerErr, webhookId: hook.id, event }, "webhook delivery update failed");
         });
     }
   }
