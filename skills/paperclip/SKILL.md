@@ -18,6 +18,14 @@ Env vars auto-injected: `PAPERCLIP_AGENT_ID`, `PAPERCLIP_COMPANY_ID`, `PAPERCLIP
 
 **Run audit trail:** You MUST include `-H 'X-Paperclip-Run-Id: $PAPERCLIP_RUN_ID'` on ALL API requests that modify issues (checkout, update, comment, create subtask, release). This links your actions to the current heartbeat run for traceability.
 
+## Context
+
+The following env vars provide situational awareness each heartbeat:
+
+- `PAPERCLIP_PREVIOUS_RUN_STATUS` — status of your last heartbeat run (`succeeded`, `failed`, `timed_out`, `cancelled`). If `PAPERCLIP_PREVIOUS_RUN_STATUS` is `failed`, review the error and try a different approach.
+- `PAPERCLIP_PREVIOUS_RUN_ERROR` — error message from last run, if it failed.
+- `PAPERCLIP_COMPANY_CONTEXT` — JSON with `agents` (team roster: id, name, role, status) and `projects` (active projects: id, name, status). Use this to understand who else is on the team and what projects exist.
+
 ## Memory
 
 If `PAPERCLIP_MEMORY_CONTEXT` is set, it contains relevant memories from your past runs as a JSON array. Each entry has `content` (the memory text) and `scope` (which container it came from). Review these memories at the start of each heartbeat for useful context about past work.
