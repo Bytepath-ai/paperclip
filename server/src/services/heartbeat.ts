@@ -10,6 +10,7 @@ import {
   heartbeatRuns,
   costEvents,
   issues,
+  projects,
   projectWorkspaces,
 } from "@paperclipai/db";
 import { conflict, notFound } from "../errors.js";
@@ -961,6 +962,37 @@ export function heartbeatService(db: Db, opts?: { memoryApiKey?: string | null; 
     if (resolvedWorkspace.projectId && !readNonEmptyString(context.projectId)) {
       context.projectId = resolvedWorkspace.projectId;
     }
+
+    // --- Previous run error signals ---
+    const lastRun = await db
+      .select({ status: heartbeatRuns.status, errorMessage: heartbeatRuns.error })
+      .from(heartbeatRuns)
+      .where(and(eq(heartbeatRuns.agentId, agent.id), eq(heartbeatRuns.companyId, agent.companyId)))
+      .orderBy(desc(heartbeatRuns.createdAt))
+      .limit(1)
+      .then((rows) => rows[0] ?? null);
+    if (lastRun) {
+      context.paperclipPreviousRunStatus = lastRun.status;
+      if (lastRun.errorMessage) context.paperclipPreviousRunError = lastRun.errorMessage;
+    }
+
+    // --- Company context: active agents + projects ---
+    const [companyAgents, companyProjects] = await Promise.all([
+      db
+        .select({ id: agents.id, name: agents.name, role: agents.role, status: agents.status })
+        .from(agents)
+        .where(and(eq(agents.companyId, agent.companyId), sql`${agents.status} != 'terminated'`))
+        .limit(50),
+      db
+        .select({ id: projects.id, name: projects.name, status: projects.status })
+        .from(projects)
+        .where(eq(projects.companyId, agent.companyId))
+        .limit(20),
+    ]);
+    context.paperclipCompanyContext = {
+      agents: companyAgents.map((a) => ({ id: a.id, name: a.name, role: a.role, status: a.status })),
+      projects: companyProjects.map((p) => ({ id: p.id, name: p.name, status: p.status })),
+    };
 
     // --- Supermemory: pre-run memory injection ---
     if (memorySvc.isEnabled()) {

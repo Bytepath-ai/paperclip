@@ -196,6 +196,20 @@ async function buildClaudeRuntimeConfig(input: ClaudeExecutionInput): Promise<Cl
     env.PAPERCLIP_WORKSPACES_JSON = JSON.stringify(workspaceHints);
   }
 
+  const prevStatus = context.paperclipPreviousRunStatus;
+  if (typeof prevStatus === "string") {
+    env.PAPERCLIP_PREVIOUS_RUN_STATUS = prevStatus;
+  }
+  const prevError = context.paperclipPreviousRunError;
+  if (typeof prevError === "string") {
+    env.PAPERCLIP_PREVIOUS_RUN_ERROR = prevError;
+  }
+
+  const companyCtx = context.paperclipCompanyContext;
+  if (companyCtx && typeof companyCtx === "object") {
+    env.PAPERCLIP_COMPANY_CONTEXT = JSON.stringify(companyCtx);
+  }
+
   const memory = context.paperclipMemory;
   if (Array.isArray(memory) && memory.length > 0) {
     // Cap at 8KB by dropping lowest-scored entries to keep valid JSON
